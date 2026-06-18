@@ -31,13 +31,11 @@ Combines long-term structure, medium-term trend, and short-term ribbon context o
 - Computed on the **weekly** timeframe (20-period SMA ± 3σ).
 - Upper and lower bands print as thick cyan dashed lines on whatever intraday/daily chart you use.
 - **Squeeze highlight:** when band width is near its recent minimum, the background tints yellow — volatility contraction / potential expansion setup.
-- Optional sell logic: markers when price closes or wicks above the upper weekly band.
 
 ### Daily Hull MAs (89 / 144)
 
 - **Green (89)** and **red (144)** solid lines from **daily** Hull moving averages, drawn on your chart timeframe.
-- **Buy signal:** green HMA crosses above red (daily bar close).
-- **Sell signal:** red crosses above green, or price exits above the weekly upper BB (configurable).
+- Use crossovers and separation for trend context against the weekly BB and ribbon.
 
 ### Fibonacci EMA ribbon (chart timeframe)
 
@@ -48,8 +46,6 @@ Combines long-term structure, medium-term trend, and short-term ribbon context o
 ### Settings worth knowing
 
 - **MTF gap fill (BB only):** how weekly band values fill between weekly bar boundaries.
-- **Show buy/sell markers:** triangle up (buy), triangle down (HMA sell), X (BB sell).
-- **Signals on bar close only:** avoids intrabar marker jumps.
 
 ---
 
@@ -146,7 +142,7 @@ MELI, NFLX, OSCR, PDD, QQQ, RACE, SPY, TGT, TQQQ, U, VELO, XP
 
 | File | Pane | Purpose |
 |------|------|---------|
-| `MHSG_Chart_Suite.pine` | Overlay | Weekly BB, daily HMAs, Fib EMA ribbon, signals |
+| `MHSG_Chart_Suite.pine` | Overlay | Weekly BB, daily HMAs, Fib EMA ribbon |
 | `MHSG_Chart_MegaStoch.pine` | Below | TSI + Stochastic + volume on 0–100 |
 | `MHSG_DarkPool_Levels.pine` | Overlay | Dark pool / block print levels (embedded) |
 | `MHSG_NetFlow.pine` | Below | Call/put net flow + scaled price (embedded) |

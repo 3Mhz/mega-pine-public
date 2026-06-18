@@ -1,4 +1,4 @@
-// MHSG Suite v16 - Fib ribbon + daily HMA + weekly BB + trade signals
+// MHSG Suite v16 - Fib ribbon + daily HMA + weekly BB
 // HMA: solid green/red pair (daily). Ribbon: dotted rainbow on chart TF.
 // Volume moved to Towne Stoch pane.
 
@@ -72,40 +72,6 @@ colHmaSlow = input.color(color.new(#EF5350, 0), "Red (slow)", group=grpHMA, tool
 
 plot(showHMA ? hmaSlow : na, "D HMA 144", color=colHmaSlow, linewidth=hmaLineWidth, linestyle=plot.linestyle_solid, force_overlay=true)
 plot(showHMA ? hmaFast : na, "D HMA 89", color=colHmaFast, linewidth=hmaLineWidth, linestyle=plot.linestyle_solid, force_overlay=true)
-
-// -- Trade signals (HMA cross + BB exit) --
-grpSig = "Trade signals"
-showSignals = input.bool(true, "Show buy / sell markers", group=grpSig, tooltip="Markers are drawn on the price chart (force_overlay). Turn off MHSG HMA Cross plot markers to avoid duplicates.")
-signalsOnClose = input.bool(true, "Signals on bar close only", group=grpSig, tooltip="Waits for the bar to finish so markers do not jump intrabar.")
-sigBuyCol = input.color(color.new(#66BB6A, 0), "Buy color", group=grpSig)
-sigSellCol = input.color(color.new(#EF5350, 0), "Sell color", group=grpSig)
-bbExitSell = input.bool(true, "Sell when above upper BB", group=grpSig, tooltip="Uses the same weekly upper band as the cyan dashed line. Wick (high) or close above counts.")
-bbSellOnNewHigh = input.bool(true, "BB sell on new high while above", group=grpSig, tooltip="Also tag sells when price makes a 10-bar high while still above the upper band.")
-
-sigBarOk = not signalsOnClose or barstate.isconfirmed
-hmaBarOk = timeframe.change(tfHMA)
-hmaReady = not na(hmaFast) and not na(hmaSlow)
-
-sigBuy = sigBarOk and showHMA and hmaReady and hmaBarOk and ta.crossover(hmaFast, hmaSlow)
-sigSellHma = sigBarOk and showHMA and hmaReady and hmaBarOk and ta.crossunder(hmaFast, hmaSlow)
-
-aboveUpperBb = showBB and bbExitSell and not na(upperBB) and (high > upperBB or close > upperBB)
-wasAboveBb = aboveUpperBb[1]
-bbSellBreak = aboveUpperBb and not wasAboveBb
-bbSellNewHigh = aboveUpperBb and bbSellOnNewHigh and close >= ta.highest(close, 10)
-sigSellBb = sigBarOk and (bbSellBreak or bbSellNewHigh)
-
-sigSellHmaPlot = sigSellHma
-sigSellBbPlot = sigSellBb
-sigSell = sigSellHmaPlot or sigSellBbPlot
-
-plotshape(showSignals and sigBuy, title="Buy", style=shape.triangleup, location=location.belowbar, color=sigBuyCol, size=size.small, text="Buy", force_overlay=true)
-plotshape(showSignals and sigSellHmaPlot, title="Sell HMA", style=shape.triangledown, location=location.abovebar, color=sigSellCol, size=size.small, text="Sell", force_overlay=true)
-plotshape(showSignals and sigSellBbPlot, title="Sell BB", style=shape.xcross, location=location.abovebar, color=sigSellCol, size=size.tiny, text="BB", force_overlay=true)
-
-alertcondition(sigBuy, "Buy (green HMA cross red)", "MHSG: Green HMA crossed above red — buy")
-alertcondition(sigSellHma, "Sell (red HMA cross green)", "MHSG: Red HMA crossed above green — sell")
-alertcondition(sigSellBb, "Sell (above upper BB)", "MHSG: Close above weekly upper Bollinger band — sell")
 
 // -- Fib EMA ribbon on chart timeframe (dotted rainbow, slow -> fast) --
 grpEMA = "Fib EMA ribbon"
