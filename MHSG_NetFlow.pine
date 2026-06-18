@@ -121,8 +121,8 @@ f_sample(int[] tarr, float[] call, float[] put, float[] price, int st, int en, i
             xV := flMin + (raw - pMin) / (pMax - pMin) * (flMax - flMin)
     [cV, pV, xV]
 
-// BEGIN_NETFLOW_DATA — generated 2026-06-17T19:38:19.529Z; do not edit by hand
-var string NF_UPDATED     = "2026-06-17"
+// BEGIN_NETFLOW_DATA — generated 2026-06-18T21:08:57.242Z; do not edit by hand
+var string NF_UPDATED     = "2026-06-18"
 var int    NF_ROLLING_DAYS = 30
 var int    NF_BASE        = 1780925400000
 f_nfData() =>
