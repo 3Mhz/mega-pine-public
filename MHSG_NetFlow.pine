@@ -1,20 +1,16 @@
-// MHSG Tradytics Net Flow — intraday options net premium flow + price
-// Mirrors the Tradytics "Net Flow" widget:
-//   Green = cumulative CALL net premium, Red = cumulative PUT net premium,
-//   White = stock price (scaled onto the flow axis for shape comparison).
+// MHSG Net Flow — intraday options net premium flow + price
+//   Green = cumulative CALL net premium
+//   Red   = cumulative PUT net premium
+//   White = stock price (scaled onto the flow axis for shape comparison)
 //
-// Data is embedded below and only renders for the symbol you are charting
-// (same pattern as MHSG_Tradytics_DarkPool_Levels). A local archive accumulates
-// ~30 calendar days across daily updates (Tradytics API only returns ~5 days
-// per fetch; the archive merges each run until the rolling window is full).
+// Data is embedded below and only renders when the chart symbol matches
+// an embedded ticker (same pattern as MHSG_DarkPool_Levels).
 //
 // IMPORTANT: use an INTRADAY timeframe (5–30 min) so bar times align with
-// embedded flow timestamps. Wider windows need coarser chart TFs.
-//
-// Regenerate data:  cd tradytics-mcp && npm run update-tradytics-pine
+// embedded flow timestamps.
 
 //@version=6
-indicator("MHSG Tradytics Net Flow", shorttitle="NetFlow", overlay=false, format=format.volume, precision=0)
+indicator("MHSG Net Flow", shorttitle="NetFlow", overlay=false, format=format.volume, precision=0)
 
 grp = "Net Flow"
 showCall  = input.bool(true,  "Show call net flow (green)", group=grp)
