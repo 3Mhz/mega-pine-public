@@ -1,0 +1,138 @@
+// MHSG Suite v16 - Fib ribbon + daily HMA + weekly BB + trade signals
+// HMA: solid green/red pair (daily). Ribbon: dotted rainbow on chart TF.
+// Volume moved to Towne Stoch pane.
+
+//@version=6
+indicator(
+     title="MHSG Suite v16",
+     shorttitle="MHSG Main",
+     overlay=true,
+     scale=scale.none,
+     format=format.price,
+     behind_chart=true)
+
+grpTF = "Long-term timeframe"
+tfLong = input.timeframe("W", "Timeframe for BB", group=grpTF, tooltip="Weekly Bollinger Bands for volatility timing. EMA ribbon always follows your chart timeframe.")
+mtfGaps = input.string("On", "MTF gap fill (BB only)", options=["On", "Off"], group=grpTF)
+gapMode = mtfGaps == "On" ? barmerge.gaps_on : barmerge.gaps_off
+
+grpScale = "Scale / autoscale"
+showSlowEma = input.bool(true, "Show EMA 144 and 233", group=grpScale)
+
+// -- Weekly Bollinger Bands --
+grpBB = "Weekly Bollinger Bands"
+showBB = input.bool(true, "Show bands", group=grpBB)
+bbLen  = input.int(20, "Length", minval=1, group=grpBB)
+bbMultUp = input.float(3.0, "Dev. Up", minval=0.1, step=0.1, group=grpBB)
+bbMultDn = input.float(3.0, "Dev. Down", minval=0.1, step=0.1, group=grpBB)
+bbOffset = input.int(0, "Offset", minval=-500, maxval=500, group=grpBB)
+bbColOuter = input.color(color.new(#26C6DA, 0), "Up / Low color", group=grpBB)
+bbColBasis = input.color(color.new(#546E7A, 0), "Middle color", group=grpBB)
+bbLineWidth = input.int(4, "Band line width", minval=1, maxval=6, group=grpBB)
+showBBBasis = input.bool(false, "Show middle band", group=grpBB)
+
+showSqueeze = input.bool(true, "Highlight volatility contraction", group=grpBB)
+squeezeLookback = input.int(120, "Contraction lookback (bars)", minval=20, group=grpBB)
+squeezeNearMin = input.float(1.08, "Within x of min width", minval=1.0, step=0.01, group=grpBB)
+squeezeColor = input.color(color.new(#FFEB3B, 88), "Contraction tint", group=grpBB)
+
+[basis, upperBB, lowerBB] = request.security(
+     syminfo.tickerid,
+     tfLong,
+     [ta.sma(close, bbLen), ta.sma(close, bbLen) + bbMultUp * ta.stdev(close, bbLen), ta.sma(close, bbLen) - bbMultDn * ta.stdev(close, bbLen)],
+     gaps=gapMode,
+     lookahead=barmerge.lookahead_off)
+
+bbWidth = upperBB - lowerBB
+bbWidthMin = ta.lowest(bbWidth, squeezeLookback)
+inSqueeze = not na(bbWidth) and bbWidth <= bbWidthMin * squeezeNearMin
+
+bgcolor(showBB and showSqueeze and inSqueeze ? squeezeColor : na, title="W BB contraction")
+
+plot(showBB and showBBBasis ? basis : na, "W BB Basis", color=bbColBasis, linewidth=math.max(1, bbLineWidth - 1), linestyle=plot.linestyle_solid, offset=bbOffset, force_overlay=true)
+plot(showBB ? upperBB : na, "W BB Upper", color=bbColOuter, linewidth=bbLineWidth, linestyle=plot.linestyle_dashed, offset=bbOffset, force_overlay=true)
+plot(showBB ? lowerBB : na, "W BB Lower", color=bbColOuter, linewidth=bbLineWidth, linestyle=plot.linestyle_dashed, offset=bbOffset, force_overlay=true)
+
+// -- Daily Hull MA (89 / 144) --
+grpHMA = "Daily Hull MA"
+showHMA = input.bool(true, "Show daily HMAs", group=grpHMA)
+tfHMA = input.timeframe("D", "HMA timeframe", group=grpHMA, tooltip="Default daily. 89/144 Hull MAs are computed on this TF, then drawn on your chart.")
+hmaFastLen = input.int(89, "Fast HMA length", minval=1, group=grpHMA)
+hmaSlowLen = input.int(144, "Slow HMA length", minval=1, group=grpHMA)
+hmaLineWidth = input.int(2, "HMA line width", minval=1, maxval=5, group=grpHMA)
+colHmaFast = input.color(color.new(#66BB6A, 0), "Green (fast)", group=grpHMA, tooltip="Daily HMA 89")
+colHmaSlow = input.color(color.new(#EF5350, 0), "Red (slow)", group=grpHMA, tooltip="Daily HMA 144")
+
+[hmaFast, hmaSlow] = request.security(
+     syminfo.tickerid,
+     tfHMA,
+     [ta.hma(close, hmaFastLen), ta.hma(close, hmaSlowLen)],
+     gaps=barmerge.gaps_off,
+     lookahead=barmerge.lookahead_off)
+
+plot(showHMA ? hmaSlow : na, "D HMA 144", color=colHmaSlow, linewidth=hmaLineWidth, linestyle=plot.linestyle_solid, force_overlay=true)
+plot(showHMA ? hmaFast : na, "D HMA 89", color=colHmaFast, linewidth=hmaLineWidth, linestyle=plot.linestyle_solid, force_overlay=true)
+
+// -- Trade signals (HMA cross + BB exit) --
+grpSig = "Trade signals"
+showSignals = input.bool(true, "Show buy / sell markers", group=grpSig, tooltip="Markers are drawn on the price chart (force_overlay). Turn off MHSG HMA Cross plot markers to avoid duplicates.")
+signalsOnClose = input.bool(true, "Signals on bar close only", group=grpSig, tooltip="Waits for the bar to finish so markers do not jump intrabar.")
+sigBuyCol = input.color(color.new(#66BB6A, 0), "Buy color", group=grpSig)
+sigSellCol = input.color(color.new(#EF5350, 0), "Sell color", group=grpSig)
+bbExitSell = input.bool(true, "Sell when above upper BB", group=grpSig, tooltip="Uses the same weekly upper band as the cyan dashed line. Wick (high) or close above counts.")
+bbSellOnNewHigh = input.bool(true, "BB sell on new high while above", group=grpSig, tooltip="Also tag sells when price makes a 10-bar high while still above the upper band.")
+
+sigBarOk = not signalsOnClose or barstate.isconfirmed
+hmaBarOk = timeframe.change(tfHMA)
+hmaReady = not na(hmaFast) and not na(hmaSlow)
+
+sigBuy = sigBarOk and showHMA and hmaReady and hmaBarOk and ta.crossover(hmaFast, hmaSlow)
+sigSellHma = sigBarOk and showHMA and hmaReady and hmaBarOk and ta.crossunder(hmaFast, hmaSlow)
+
+aboveUpperBb = showBB and bbExitSell and not na(upperBB) and (high > upperBB or close > upperBB)
+wasAboveBb = aboveUpperBb[1]
+bbSellBreak = aboveUpperBb and not wasAboveBb
+bbSellNewHigh = aboveUpperBb and bbSellOnNewHigh and close >= ta.highest(close, 10)
+sigSellBb = sigBarOk and (bbSellBreak or bbSellNewHigh)
+
+sigSellHmaPlot = sigSellHma
+sigSellBbPlot = sigSellBb
+sigSell = sigSellHmaPlot or sigSellBbPlot
+
+plotshape(showSignals and sigBuy, title="Buy", style=shape.triangleup, location=location.belowbar, color=sigBuyCol, size=size.small, text="Buy", force_overlay=true)
+plotshape(showSignals and sigSellHmaPlot, title="Sell HMA", style=shape.triangledown, location=location.abovebar, color=sigSellCol, size=size.small, text="Sell", force_overlay=true)
+plotshape(showSignals and sigSellBbPlot, title="Sell BB", style=shape.xcross, location=location.abovebar, color=sigSellCol, size=size.tiny, text="BB", force_overlay=true)
+
+alertcondition(sigBuy, "Buy (green HMA cross red)", "MHSG: Green HMA crossed above red — buy")
+alertcondition(sigSellHma, "Sell (red HMA cross green)", "MHSG: Red HMA crossed above green — sell")
+alertcondition(sigSellBb, "Sell (above upper BB)", "MHSG: Close above weekly upper Bollinger band — sell")
+
+// -- Fib EMA ribbon on chart timeframe (dotted rainbow, slow -> fast) --
+grpEMA = "Fib EMA ribbon"
+showRibbon = input.bool(true, "Show ribbon", group=grpEMA)
+emaLineWidth = input.int(2, "Line width", minval=1, maxval=4, group=grpEMA)
+
+ribbonEma(len) => ta.ema(close, len)
+
+if barstate.islast and chart.is_heikinashi
+    label.new(bar_index, high, "MHSG: ribbon uses regular close; standard candles recommended", style=label.style_label_down, color=color.orange, textcolor=color.white, size=size.small)
+
+colEMA233 = #F44336
+colEMA144 = #FF9800
+colEMA89  = #FFEB3B
+colEMA55  = #4CAF50
+colEMA34  = #00BCD4
+colEMA21  = #2196F3
+colEMA13  = #3F51B5
+colEMA8   = #7E57C2
+
+plot(showRibbon and showSlowEma ? ribbonEma(233) : na, "EMA 233", color=colEMA233, linewidth=emaLineWidth, linestyle=plot.linestyle_dotted, force_overlay=true)
+plot(showRibbon and showSlowEma ? ribbonEma(144) : na, "EMA 144", color=colEMA144, linewidth=emaLineWidth, linestyle=plot.linestyle_dotted, force_overlay=true)
+plot(showRibbon ? ribbonEma(89) : na, "EMA 89", color=colEMA89, linewidth=emaLineWidth, linestyle=plot.linestyle_dotted, force_overlay=true)
+plot(showRibbon ? ribbonEma(55) : na, "EMA 55", color=colEMA55, linewidth=emaLineWidth, linestyle=plot.linestyle_dotted, force_overlay=true)
+plot(showRibbon ? ribbonEma(34) : na, "EMA 34", color=colEMA34, linewidth=emaLineWidth, linestyle=plot.linestyle_dotted, force_overlay=true)
+plot(showRibbon ? ribbonEma(21) : na, "EMA 21", color=colEMA21, linewidth=emaLineWidth, linestyle=plot.linestyle_dotted, force_overlay=true)
+plot(showRibbon ? ribbonEma(13) : na, "EMA 13", color=colEMA13, linewidth=emaLineWidth, linestyle=plot.linestyle_dotted, force_overlay=true)
+plot(showRibbon ? ribbonEma(8) : na, "EMA 8", color=colEMA8, linewidth=emaLineWidth, linestyle=plot.linestyle_dotted, force_overlay=true)
+
+alertcondition(inSqueeze and not inSqueeze[1], "Weekly BB entering contraction", "Weekly Bollinger bandwidth near recent low")

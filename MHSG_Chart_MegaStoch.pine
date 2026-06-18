@@ -1,0 +1,146 @@
+// MHSG MegaStoch — TSI + Stochastic on one shared 0..100 axis + volume
+// Stoch: native 0..100 (%K), solid green/red
+// TSI:   percentile rank (default) or fixed map to 0..100, solid cyan/orange
+// Volume: semi-transparent columns at bottom (0..volHeight on fixed 0..100 pane)
+//
+// Scale: Pine always plots 0 and 100 anchors so autoscale stays fixed. Manual Y-drag
+// cannot be disabled from script — reset with double-click the pane Y-axis, or use
+// indicator ⋮ → "Reset chart view" if the scale drifts.
+
+//@version=6
+indicator(
+     title="MegaStoch",
+     shorttitle="MegaStoch",
+     overlay=false,
+     format=format.price,
+     precision=2,
+     max_labels_count=500)
+
+// ─── Fixed 0..100 pane scale ────────────────────────────────────────────
+grpScale = "Shared scale (0–100)"
+showScaleFrame = input.bool(true, "Show 0/100 bound lines", group=grpScale, tooltip="Faint lines at 0 and 100. Always plotted (invisible when off) to keep autoscale locked.")
+scaleMode = input.string("TSI percentile rank", "TSI on 0–100", options=["Fixed TSI map", "TSI percentile rank"], group=grpScale, tooltip="Fixed: raw TSI ±N maps to 0/100 (0 TSI = 50). Percentile: TSI rank over lookback — always uses full 0–100 visually, like Stoch swings.")
+tsiMapHalf = input.float(10.0, "TSI ± range → 0/100", minval=1.0, maxval=100.0, step=1.0, group=grpScale, tooltip="Fixed map only. Raw TSI at -N → 0, 0 → 50, +N → 100. Try 8–12 if TSI looks too flat; 25 matches classic TSI levels.")
+tsiPctLen  = input.int(120, "TSI percentile lookback", minval=20, group=grpScale, tooltip="Percentile mode only.")
+showMidline = input.bool(true, "Show 50 midline", group=grpScale)
+
+color _scaleFrameCol = showScaleFrame ? color.new(color.gray, 70) : color.new(chart.bg_color, 100)
+plot(100.0, "Scale 100", color=_scaleFrameCol, linewidth=1, editable=false)
+plot(0.0,   "Scale 0",   color=_scaleFrameCol, linewidth=1, editable=false)
+
+// ─── Volume (background columns, normalized to bottom of pane) ──────────
+grpVol = "Volume"
+showVolume  = input.bool(true,  "Show volume",  group=grpVol)
+showBuySell = input.bool(true,  "Color by buy/sell pressure", group=grpVol, tooltip="Green = close in upper half of bar range (buy). Red = lower half (sell).")
+volMaLen    = input.int(20,     "Volume MA length", minval=1, group=grpVol)
+showVolMa   = input.bool(true,  "Show volume MA",  group=grpVol)
+volHeight   = input.float(30.0, "Max bar height (0–100 scale)", minval=5, maxval=60, step=5, group=grpVol, tooltip="Tallest volume bar reaches this Y-value on the 0–100 axis. 30 keeps bars in the bottom third.")
+volLookback = input.int(120,    "Normalization lookback", minval=20, group=grpVol)
+colVolUp    = input.color(color.new(#66BB6A, 70), "Buy / up",    group=grpVol)
+colVolDn    = input.color(color.new(#EF5350, 70), "Sell / down",  group=grpVol)
+colVolNeut  = input.color(color.new(#787B86, 75), "Neutral",      group=grpVol)
+colVolMa    = input.color(color.new(#FFEB3B, 40), "Volume MA",    group=grpVol)
+
+float _vMax  = ta.highest(volume, volLookback)
+float _vNorm = nz(_vMax) > 0 ? (volume / _vMax) * volHeight : 0
+float _vMa   = ta.sma(volume, volMaLen)
+float _vMaN  = nz(_vMax) > 0 ? (_vMa / _vMax) * volHeight : 0
+
+float _bR   = high - low
+float _bRat = _bR > 0 ? (close - low) / _bR : 0.5
+color _vCol = not showBuySell ? (close >= open ? colVolUp : colVolDn) : _bRat > 0.5 ? colVolUp : _bRat < 0.5 ? colVolDn : colVolNeut
+
+plot(showVolume ? _vNorm : na, "Volume", color=_vCol, style=plot.style_columns, histbase=0)
+plot(showVolume and showVolMa ? _vMaN : na, "Vol MA", color=colVolMa, linewidth=1)
+
+// ─── Stochastic (solid) ───────────────────────────────────────────────────
+grpStoch = "Stochastic"
+stochLen     = input.int(14, "%K length",    minval=1, group=grpStoch)
+stochSmoothK = input.int(2,  "%K smoothing", minval=1, group=grpStoch)
+stochSmoothD = input.int(3,  "%D smoothing", minval=1, group=grpStoch)
+stochUpper   = input.int(80, "Overbought",  minval=50, maxval=100, group=grpStoch)
+stochLower   = input.int(20, "Oversold",    minval=0, maxval=50, group=grpStoch)
+colStochBull = input.color(color.new(#66BB6A, 0), "Bullish (green)", group=grpStoch)
+colStochBear = input.color(color.new(#EF5350, 0), "Bearish (red)",   group=grpStoch)
+fillStochBand = input.bool(true, "Shade OB/OS zone", group=grpStoch)
+
+stochCalc() =>
+    float raw = ta.stoch(close, high, low, stochLen)
+    float k   = ta.sma(raw, stochSmoothK)
+    float d   = ta.sma(k, stochSmoothD)
+    [k, d]
+
+[stochK, stochD] = stochCalc()
+[stochK_d, stochD_d] = request.security(syminfo.tickerid, "D", stochCalc(), gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off)
+[stochK_w, stochD_w] = request.security(syminfo.tickerid, "W", stochCalc(), gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off)
+
+bool  _sBull = stochK > stochD
+color _sCol  = _sBull ? colStochBull : colStochBear
+
+pSUpper = plot(stochUpper, "OB 80", color=color.new(colStochBull, 60), linewidth=1, style=plot.style_linebr)
+pSLower = plot(stochLower, "OS 20", color=color.new(colStochBull, 60), linewidth=1, style=plot.style_linebr)
+plot(math.max(0.0, math.min(100.0, stochK)), "Stoch %K", color=_sCol, linewidth=2, linestyle=plot.linestyle_solid)
+
+fill(pSUpper, pSLower, color=fillStochBand ? color.new(#000000, 88) : na, title="Stoch zone")
+
+// ─── TSI (solid) ────────────────────────────────────────────────────────
+grpTSI = "True Strength Index"
+tsiShort   = input.int(13, "Short",  minval=1, group=grpTSI)
+tsiLong    = input.int(25, "Long",   minval=1, group=grpTSI)
+tsiSignalL = input.int(13, "Signal", minval=1, group=grpTSI)
+tsiSrc     = input.source(close, "Source", group=grpTSI)
+colTsiBull = input.color(color.new(#26C6DA, 0), "Bullish (cyan)", group=grpTSI)
+colTsiBear = input.color(color.new(#FF7043, 0), "Bearish (orange)", group=grpTSI)
+tsiLineW   = input.int(3, "TSI line width", minval=1, maxval=5, group=grpTSI)
+
+tsiCalc() =>
+    float v = ta.tsi(tsiSrc, tsiShort, tsiLong)
+    float s = ta.ema(v, tsiSignalL)
+    [v, s]
+
+[tsiVal, tsiSig] = tsiCalc()
+[tsiVal_d, tsiSig_d] = request.security(syminfo.tickerid, "D", tsiCalc(), gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off)
+[tsiVal_w, tsiSig_w] = request.security(syminfo.tickerid, "W", tsiCalc(), gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off)
+
+bool _tFixed = scaleMode == "Fixed TSI map"
+float _tFixedPlot = math.max(0.0, math.min(100.0, (tsiVal + tsiMapHalf) / (2.0 * tsiMapHalf) * 100.0))
+float _tPctPlot   = ta.percentrank(tsiVal, tsiPctLen)
+float _tPlot      = _tFixed ? _tFixedPlot : _tPctPlot
+
+bool  _tBull = tsiVal > tsiSig
+color _tCol  = _tBull ? colTsiBull : colTsiBear
+
+plot(_tPlot, "TSI", color=_tCol, linewidth=tsiLineW, linestyle=plot.linestyle_solid)
+
+hline(50, "Mid 50", color=color.new(color.white, 55), linestyle=hline.style_solid, display=showMidline ? display.all : display.none)
+
+// ─── D / W badges ───────────────────────────────────────────────────────
+grpBadge = "Badges"
+showBadges = input.bool(true, "Show D / W badges", group=grpBadge)
+
+var table badge = table.new(position.top_left, 4, 1, bgcolor=color.new(color.black, 100), border_width=0)
+
+if showBadges and barstate.islast
+    table.cell(badge, 0, 0, "S·D", text_color=color.white, bgcolor=color.new(#66BB6A, 0), text_size=size.small)
+    table.cell(badge, 1, 0, "S·W", text_color=color.black, bgcolor=color.new(color.gray, 40), text_size=size.small)
+    table.cell(badge, 2, 0, "T·D", text_color=color.black, bgcolor=color.new(color.gray, 40), text_size=size.small)
+    table.cell(badge, 3, 0, "T·W", text_color=color.white, bgcolor=color.new(#66BB6A, 0), text_size=size.small)
+
+// ─── Data window (raw TSI + mapped Y) ───────────────────────────────────
+plot(stochK_d, "S D %K",     display=display.data_window)
+plot(stochD_d, "S D %D",     display=display.data_window)
+plot(stochK_w, "S W %K",     display=display.data_window)
+plot(stochD_w, "S W %D",     display=display.data_window)
+plot(tsiVal,   "TSI raw",    display=display.data_window)
+plot(tsiSig,   "TSI signal", display=display.data_window)
+plot(_tPlot,   "TSI on 0–100", display=display.data_window)
+plot(tsiVal_d, "T D TSI",    display=display.data_window)
+plot(tsiSig_d, "T D Sig",    display=display.data_window)
+plot(tsiVal_w, "T W TSI",    display=display.data_window)
+plot(tsiSig_w, "T W Sig",    display=display.data_window)
+
+// ─── Alerts (always on raw TSI / native Stoch) ──────────────────────────
+alertcondition(ta.crossover(stochK, stochUpper),  "Stoch overbought", "MegaStoch: %K crossed above overbought")
+alertcondition(ta.crossunder(stochK, stochLower), "Stoch oversold",   "MegaStoch: %K crossed below oversold")
+alertcondition(ta.crossover(tsiVal, tsiSig),      "TSI bull cross",   "MegaStoch: TSI crossed above signal")
+alertcondition(ta.crossunder(tsiVal, tsiSig),     "TSI bear cross",   "MegaStoch: TSI crossed below signal")
